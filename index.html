@@ -18,11 +18,14 @@
             color: #4f46e5;
             background-color: #eef2ff;
         }
-        /* Ensure charts in a grid have a defined height to render correctly */
         .chart-container {
             position: relative;
-            height: 400px; /* You can adjust this height */
+            height: 400px;
             width: 100%;
+        }
+        /* Styles for the custom message box */
+        #message-box {
+            transition: opacity 0.3s ease-in-out;
         }
     </style>
 </head>
@@ -51,12 +54,18 @@
         <div id="form-content" class="hidden">
             <div class="bg-white p-6 sm:p-8 rounded-lg shadow-lg border-t-8 border-indigo-600">
                 <h2 class="text-xl font-semibold text-gray-700 mb-2">Survey on 3D Printing Inaccuracies</h2>
-                <p class="text-gray-600 mb-6">Please rate the impact of the following potential causes on the dimensional inaccuracy of 3D prints.</p>
+                <p class="text-gray-600 mb-6">Please rate the impact of the following potential causes on the dimensional inaccuracy of 3D prints. All questions are required.</p>
+                
+                <!-- Message Box for notifications -->
+                <div id="message-box" class="hidden p-4 mb-4 text-sm rounded-lg" role="alert">
+                  <span class="font-medium" id="message-content"></span>
+                </div>
+
                 <form id="survey-form" class="space-y-8">
                     <!-- Form questions will be dynamically inserted here -->
                 </form>
                 <div class="mt-8 text-center">
-                    <button type="button" class="bg-indigo-600 text-white font-bold py-3 px-8 rounded-lg hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors duration-300">
+                    <button id="submit-button" type="button" class="bg-indigo-600 text-white font-bold py-3 px-8 rounded-lg hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors duration-300">
                         Submit Responses
                     </button>
                 </div>
@@ -66,32 +75,22 @@
         <!-- Dashboard Content -->
         <div id="dashboard-content">
              <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                <!-- Chart 1: Original Full Bar Chart -->
-                <div class="bg-white p-6 rounded-lg shadow-lg">
+                <div class="bg-white p-6 rounded-lg shadow-lg lg:col-span-2">
                     <h3 class="text-lg font-semibold text-gray-700 mb-4">Overall Impact Analysis</h3>
                     <div class="chart-container" style="height: 500px;">
                         <canvas id="causesChart"></canvas>
                     </div>
                 </div>
-                <!-- Chart 2: Top 5 Critical Causes -->
                 <div class="bg-white p-6 rounded-lg shadow-lg">
                     <h3 class="text-lg font-semibold text-gray-700 mb-4">Top 5 Critical Causes</h3>
-                     <div class="chart-container" style="height: 500px;">
+                     <div class="chart-container" style="height: 400px;">
                         <canvas id="criticalCausesChart"></canvas>
                     </div>
                 </div>
-                <!-- Chart 3: Doughnut Chart -->
                 <div class="bg-white p-6 rounded-lg shadow-lg">
                     <h3 class="text-lg font-semibold text-gray-700 mb-4">Overall Response Distribution</h3>
                     <div class="chart-container">
                         <canvas id="distributionChart"></canvas>
-                    </div>
-                </div>
-                <!-- Chart 4: Radar Chart -->
-                <div class="bg-white p-6 rounded-lg shadow-lg">
-                    <h3 class="text-lg font-semibold text-gray-700 mb-4">Cause Comparison</h3>
-                    <div class="chart-container">
-                        <canvas id="radarChart"></canvas>
                     </div>
                 </div>
              </div>
@@ -99,7 +98,7 @@
     </div>
 
     <script>
-        // Data from the provided CSV file
+        // Data from the provided CSV file (will be updated by form submissions)
         const surveyData = [
             { "Cause": "Flow Rate", "Critical": 46, "Moderate": 4, "Low": 0 },
             { "Cause": "Vibration", "Critical": 16, "Moderate": 25, "Low": 9 },
@@ -119,7 +118,6 @@
 
         let charts = {}; // Object to hold chart instances
 
-        // Function to destroy existing charts before recreating them
         function destroyCharts() {
             Object.values(charts).forEach(chart => {
                 if (chart) chart.destroy();
@@ -133,14 +131,17 @@
             const formContent = document.getElementById('form-content');
             const dashboardContent = document.getElementById('dashboard-content');
             const surveyForm = document.getElementById('survey-form');
+            const submitButton = document.getElementById('submit-button');
+            const messageBox = document.getElementById('message-box');
+            const messageContent = document.getElementById('message-content');
 
             // --- DYNAMICALLY GENERATE THE FORM ---
             function generateForm() {
-                // Clear previous form to prevent duplication
                 surveyForm.innerHTML = '';
                 surveyData.forEach((item, index) => {
                     const questionBlock = document.createElement('div');
                     questionBlock.className = 'p-6 rounded-lg border border-gray-200';
+                    questionBlock.id = `question-block-${index}`;
 
                     const questionTitle = document.createElement('p');
                     questionTitle.className = 'font-medium text-gray-800 mb-4';
@@ -173,112 +174,90 @@
                 });
             }
 
+            // --- HANDLE FORM SUBMISSION ---
+            function handleSubmit() {
+                const formData = new FormData(surveyForm);
+                const totalQuestions = surveyData.length;
+                let answeredQuestions = 0;
+                
+                // Reset styles
+                document.querySelectorAll('.border-red-400').forEach(el => el.classList.remove('border-red-400'));
+
+                // Validation
+                for(let i = 0; i < totalQuestions; i++) {
+                    if(formData.has(`question_${i}`)) {
+                        answeredQuestions++;
+                    } else {
+                        // Highlight unanswered questions
+                        document.getElementById(`question-block-${i}`).classList.add('border-red-400');
+                    }
+                }
+
+                if (answeredQuestions < totalQuestions) {
+                    showMessage('Error! Please answer all questions before submitting.', 'error');
+                    return;
+                }
+
+                // Process valid data
+                for(let i = 0; i < totalQuestions; i++) {
+                    const answer = formData.get(`question_${i}`);
+                    if (answer) {
+                        surveyData[i][answer]++;
+                    }
+                }
+
+                // Provide feedback and update UI
+                showMessage('Success! Your responses have been recorded.', 'success');
+                surveyForm.reset();
+                setTimeout(() => {
+                    showDashboard();
+                }, 1500); // Wait a moment before switching tabs
+            }
+
+            // --- CUSTOM MESSAGE DISPLAY ---
+            function showMessage(message, type = 'success') {
+                messageContent.textContent = message;
+                messageBox.classList.remove('hidden', 'bg-red-100', 'text-red-700', 'bg-green-100', 'text-green-700');
+                if (type === 'error') {
+                    messageBox.classList.add('bg-red-100', 'text-red-700');
+                } else {
+                    messageBox.classList.add('bg-green-100', 'text-green-700');
+                }
+                setTimeout(() => {
+                    messageBox.classList.add('hidden');
+                }, 3000); // Hide message after 3 seconds
+            }
+
             // --- CREATE THE DASHBOARD CHARTS ---
             function createAllCharts() {
-                destroyCharts(); // Clear any existing charts
+                destroyCharts();
                 createMainBarChart();
                 createTopCriticalChart();
                 createDistributionChart();
-                createRadarChart();
             }
 
-            // Chart 1: Main Horizontal Bar Chart
             function createMainBarChart() {
                 const ctx = document.getElementById('causesChart').getContext('2d');
                 charts.mainBar = new Chart(ctx, {
-                    type: 'bar',
-                    data: {
-                        labels: surveyData.map(item => item.Cause),
-                        datasets: [
-                            { label: 'Critical', data: surveyData.map(item => item.Critical), backgroundColor: 'rgba(239, 68, 68, 0.7)' },
-                            { label: 'Moderate', data: surveyData.map(item => item.Moderate), backgroundColor: 'rgba(251, 191, 36, 0.7)' },
-                            { label: 'Low', data: surveyData.map(item => item.Low), backgroundColor: 'rgba(34, 197, 94, 0.7)' }
-                        ]
-                    },
-                    options: {
-                        responsive: true, maintainAspectRatio: false, indexAxis: 'y',
-                        scales: { x: { stacked: true, title: { display: true, text: 'Number of Responses' } }, y: { stacked: true } },
-                        plugins: { legend: { position: 'top' }, tooltip: { mode: 'index', intersect: false } }
-                    }
+                    type: 'bar', data: { labels: surveyData.map(item => item.Cause), datasets: [ { label: 'Critical', data: surveyData.map(item => item.Critical), backgroundColor: 'rgba(239, 68, 68, 0.7)' }, { label: 'Moderate', data: surveyData.map(item => item.Moderate), backgroundColor: 'rgba(251, 191, 36, 0.7)' }, { label: 'Low', data: surveyData.map(item => item.Low), backgroundColor: 'rgba(34, 197, 94, 0.7)' } ] }, options: { responsive: true, maintainAspectRatio: false, indexAxis: 'y', scales: { x: { stacked: true, title: { display: true, text: 'Number of Responses' } }, y: { stacked: true } }, plugins: { legend: { position: 'top' }, tooltip: { mode: 'index', intersect: false } } }
                 });
             }
 
-            // Chart 2: Top 5 Critical Causes (Vertical Bar)
             function createTopCriticalChart() {
                 const sortedData = [...surveyData].sort((a, b) => b.Critical - a.Critical).slice(0, 5);
                 const ctx = document.getElementById('criticalCausesChart').getContext('2d');
                 charts.topCritical = new Chart(ctx, {
-                    type: 'bar',
-                    data: {
-                        labels: sortedData.map(item => item.Cause),
-                        datasets: [{
-                            label: 'Critical Responses',
-                            data: sortedData.map(item => item.Critical),
-                            backgroundColor: 'rgba(220, 38, 38, 0.75)',
-                            borderColor: 'rgba(220, 38, 38, 1)',
-                            borderWidth: 1
-                        }]
-                    },
-                    options: {
-                        responsive: true, maintainAspectRatio: false,
-                        scales: { y: { beginAtZero: true, title: { display: true, text: 'Number of Critical Ratings' } } },
-                        plugins: { legend: { display: false } }
-                    }
+                    type: 'bar', data: { labels: sortedData.map(item => item.Cause), datasets: [{ label: 'Critical Responses', data: sortedData.map(item => item.Critical), backgroundColor: 'rgba(220, 38, 38, 0.75)', borderColor: 'rgba(220, 38, 38, 1)', borderWidth: 1 }] }, options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true, title: { display: true, text: 'Number of Critical Ratings' } } }, plugins: { legend: { display: false } } }
                 });
             }
 
-            // Chart 3: Overall Distribution (Doughnut)
             function createDistributionChart() {
                 const totalCritical = surveyData.reduce((sum, item) => sum + item.Critical, 0);
                 const totalModerate = surveyData.reduce((sum, item) => sum + item.Moderate, 0);
                 const totalLow = surveyData.reduce((sum, item) => sum + item.Low, 0);
                 const ctx = document.getElementById('distributionChart').getContext('2d');
                 charts.distribution = new Chart(ctx, {
-                    type: 'doughnut',
-                    data: {
-                        labels: ['Critical', 'Moderate', 'Low'],
-                        datasets: [{
-                            data: [totalCritical, totalModerate, totalLow],
-                            backgroundColor: ['rgba(239, 68, 68, 0.7)', 'rgba(251, 191, 36, 0.7)', 'rgba(34, 197, 94, 0.7)'],
-                            borderColor: ['#fff'],
-                            borderWidth: 2
-                        }]
-                    },
-                    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } } }
-                });
-            }
-
-            // Chart 4: Cause Comparison (Radar)
-            function createRadarChart() {
-                const radarData = {
-                    'Flow Rate': surveyData.find(d => d.Cause === 'Flow Rate'),
-                    'Vibration': surveyData.find(d => d.Cause === 'Vibration'),
-                    'Room Temperature': surveyData.find(d => d.Cause === 'Room Temperature')
-                };
-                const ctx = document.getElementById('radarChart').getContext('2d');
-                charts.radar = new Chart(ctx, {
-                    type: 'radar',
-                    data: {
-                        labels: ['Critical', 'Moderate', 'Low'],
-                        datasets: [
-                            {
-                                label: 'Flow Rate',
-                                data: [radarData['Flow Rate'].Critical, radarData['Flow Rate'].Moderate, radarData['Flow Rate'].Low],
-                                fill: true, backgroundColor: 'rgba(239, 68, 68, 0.2)', borderColor: 'rgb(239, 68, 68)', pointBackgroundColor: 'rgb(239, 68, 68)'
-                            },
-                            {
-                                label: 'Vibration',
-                                data: [radarData['Vibration'].Critical, radarData['Vibration'].Moderate, radarData['Vibration'].Low],
-                                fill: true, backgroundColor: 'rgba(251, 191, 36, 0.2)', borderColor: 'rgb(251, 191, 36)', pointBackgroundColor: 'rgb(251, 191, 36)'
-                            },
-                             {
-                                label: 'Room Temperature',
-                                data: [radarData['Room Temperature'].Critical, radarData['Room Temperature'].Moderate, radarData['Room Temperature'].Low],
-                                fill: true, backgroundColor: 'rgba(34, 197, 94, 0.2)', borderColor: 'rgb(34, 197, 94)', pointBackgroundColor: 'rgb(34, 197, 94)'
-                            }
-                        ]
-                    },
-                    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } } }
+                    type: 'doughnut', data: { labels: ['Critical', 'Moderate', 'Low'], datasets: [{ data: [totalCritical, totalModerate, totalLow], backgroundColor: ['rgba(239, 68, 68, 0.7)', 'rgba(251, 191, 36, 0.7)', 'rgba(34, 197, 94, 0.7)'], borderColor: ['#fff'], borderWidth: 2 }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } } }
                 });
             }
 
@@ -299,16 +278,16 @@
                 dashboardTab.classList.remove('text-gray-500', 'hover:text-gray-700', 'hover:border-gray-300');
                 formTab.classList.remove('tab-active');
                 formTab.classList.add('text-gray-500', 'hover:text-gray-700', 'hover:border-gray-300');
-                // Recreate charts when tab is shown to ensure proper rendering
                 createAllCharts();
             }
 
+            // --- EVENT LISTENERS ---
             formTab.addEventListener('click', showForm);
             dashboardTab.addEventListener('click', showDashboard);
+            submitButton.addEventListener('click', handleSubmit);
 
             // --- INITIALIZE ---
             generateForm();
-            // Initially show the dashboard, so we create the charts on load
             showDashboard();
         });
     </script>
